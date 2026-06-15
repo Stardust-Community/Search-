@@ -1,0 +1,110 @@
+# ============================================================
+#   ʀᴇɴᴅᴇʀ ʙʟᴜᴇᴘʀɪɴᴛ  —  render.yaml
+#   Docs : https://render.com/docs/blueprint-spec
+#   Deploy: https://dashboard.render.com/blueprints
+# ============================================================
+#
+#   HOW TO DEPLOY
+#   ─────────────
+#   1. Push this repo to GitHub / GitLab.
+#   2. Go to Render → "New Blueprint" → connect the repo.
+#   3. Render reads this file and creates the service automatically.
+#   4. Fill in every  sync: false  variable in the dashboard
+#      (Environment tab) before clicking "Deploy".
+#
+#   SERVICE TYPE: "web"
+#   ────────────────────
+#   We use type: web (not worker) because Render requires a bound
+#   HTTP port to confirm the process started successfully.
+#   main.py runs a tiny aiohttp health server on $PORT alongside
+#   the Pyrogram bot — Render pings GET / every 30 s.
+#
+# ============================================================
+
+services:
+  - type: web
+    name: filter-bot
+    runtime: python
+    region: oregon               # free-tier region; change to: frankfurt / singapore / ohio
+    plan: free                   # free = 512 MB RAM, spins down after 15 min inactivity
+                                 # upgrade to "starter" ($7/mo) for always-on bots
+
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+
+    # ── Keep the Pyrogram session file across deploys ─────────
+    # Without this disk, filter_bot.session is wiped every redeploy
+    # and the bot must re-auth each time (causes startup failures).
+    disk:
+      name: session-disk
+      mountPath: /app/session    # Pyrogram will write filter_bot.session here
+      sizeGB: 1                  # 1 GB is the minimum on Render
+
+    # ── Environment variables ─────────────────────────────────
+    # sync: false  → you paste the real value in the Render dashboard
+    # value: "..."  → committed default (safe for non-secret values)
+    envVars:
+
+      # ── Telegram API credentials ────────────────────────────
+      # Get from https://my.telegram.org → App API
+      - key: API_ID
+        sync: false              # REQUIRED — your app api_id (integer)
+
+      - key: API_HASH
+        sync: false              # REQUIRED — your app api_hash (string)
+
+      # ── Bot token ───────────────────────────────────────────
+      # Get from @BotFather on Telegram
+      - key: BOT_TOKEN
+        sync: false              # REQUIRED — format: 123456:ABCdef...
+
+      # ── Owner Telegram user ID ──────────────────────────────
+      # Use @userinfobot to find your numeric ID
+      - key: OWNER_ID
+        sync: false              # REQUIRED — integer, e.g. 123456789
+
+      # ── MongoDB ─────────────────────────────────────────────
+      # Use MongoDB Atlas free tier: https://cloud.mongodb.com
+      # Connection string format:
+      #   mongodb+srv://user:pass@cluster.mongodb.net/?retryWrites=true
+      - key: MONGO_URI
+        sync: false              # REQUIRED — Atlas URI or self-hosted
+
+      - key: DB_NAME
+        value: filterbot         # Change if you want a different DB name
+
+      # ── Private store channel ────────────────────────────────
+      # Create a private Telegram channel, add the bot as admin.
+      # Full posts (image + caption + join-link button) are stored here.
+      # Format: -100 followed by the channel ID, e.g. -1001234567890
+      - key: POST_STORE_CHANNEL
+        sync: false              # REQUIRED — integer with -100 prefix
+
+      # ── Request / failed-search log channel ─────────────────
+      # Bot logs every failed user search here so admins can see
+      # what content users are requesting that doesn't exist yet.
+      - key: REQUEST_CHANNEL
+        sync: false              # REQUIRED — integer with -100 prefix
+
+      # ── Main channel seed (optional) ────────────────────────
+      # The public/private channel where deep-link posts are published.
+      # You can also set this later with /setchannel inside the bot.
+      # Leave as "0" if you prefer to set it via /setchannel command.
+      - key: MAIN_CHANNEL_SEED
+        value: "0"               # OPTIONAL — integer with -100 prefix or 0
+
+      # ── Auto-delete defaults (seconds, 0 = disabled) ────────
+      # These are the startup defaults loaded into MongoDB on first run.
+      # You can override them at runtime with /autodelete inside the bot.
+      - key: DEFAULT_DM_DELETE
+        value: "0"               # e.g. 300 = delete DM replies after 5 min
+
+      - key: DEFAULT_CH_DELETE
+        value: "0"               # e.g. 432000 = delete channel posts after 5 days
+
+      # ── Python version pin ──────────────────────────────────
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+
+      # ── Render injects PORT automatically ───────────────────
+      # main.py reads os.getenv("PORT", "8080") — no action needed here.
